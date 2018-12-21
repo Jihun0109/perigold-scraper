@@ -10,47 +10,6 @@ from shutil import copyfile
 import json, re
 
 
-def download1(uri, destfilename):
-    if not os.path.exists(destfilename):
-        print "Downloading from {} to {}...".format(uri, destfilename)
-        try:
-            url = uri
-            if ".jpg" in destfilename: # Case downloading jpeg image
-                for x in range(0, 5):
-                    url = uri + "?wid=" + str(2000 - x * 400)
-                    print url
-                    r = requests.get(url, stream=True)
-                    if r.status_code == 200:
-                        break
-                    else:
-                        if "illegal" in r.text:
-                            print r.url + " size too large."
-                            print ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", "Decreaze image size and retrying..."
-
-
-            else:
-                r = requests.get(url, stream=True)
-
-            try:
-                result_txt = r.content
-            except:
-                result_txt = 'suss'
-            if 'Image not found' in result_txt:
-                return False
-            with open(destfilename, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=1024):
-                    if chunk:
-                        f.write(chunk)
-                        f.flush()
-            return True
-        except:
-            print "Error downloading file."
-            return False
-            
-    else:
-        print " !!!!!!  The file {} already exists !!!!!!".format(destfilename)
-        return True
-
 def download(url, destfilename):
     if not os.path.exists(destfilename):
         print "Downloading from {} to {}...".format(url, destfilename)
@@ -71,11 +30,11 @@ def download(url, destfilename):
         print " !!!!!!  The file {} already exists !!!!!!".format(destfilename)
         return True
 
-class DimplexSpider(Spider):
-    name = "electricfire"
-    start_urls = ['https://brands.electricfireplacesdirect.com/prod/storeID/products/dimplex?0.8662186796272&__amp_source_origin=http%3A%2F%2Fwww.electricfireplacesdirect.com']
+class PerigoldSpider(Spider):
+    name = "perigold"
+    start_urls = ['https://www.perigold.com/brand/bnd/badgley-mischka-home-b44446.html']
 
-    brand_name = "Dimplex"
+    brand_name = "Badgley Mischka Home"
 
     def filter_list(self, lst):
         min_len = min([len(x) for x in lst])
@@ -149,43 +108,21 @@ class DimplexSpider(Spider):
         result.insert(-1, l.strip())
         return ' '.join(result)
 
-    
-
-    def parse2(self, response):
-        print response.url
-        pass
-        category_tag = response.xpath('//*[@id="refinement-ProductCategoryPath"]//li/a')
-        if category_tag:
-            print "There are categories on the leftside. (",len(category_tag),")"
-            for idx, category_a in enumerate(category_tag):
-                category = category_a.xpath('./text()').extract_first()
-
-                url = category_a.xpath('./@href').extract_first()
-                #if idx<=3:
-                yield Request(response.urljoin(url), callback=self.parse1, meta={'category': category})                
-                
-        else:
-            url = response.xpath('//*[@class="dept-subcat-header"]/a/@href').extract_first()
-            if url:
-                yield Request(response.urljoin(url), callback=self.parse)
-            # break
-            #broken url
-            
-            # https://www.ylighting.com/castle-peak-large-wall-sconce-by-visual-comfort-VISP156088.html
-            # https://www.ylighting.com/darlana-outdoor-hanging-lantern-by-visual-comfort-VISP157830.html
-            # https://www.ylighting.com/precision-flush-mount-ceiling-light-by-visual-comfort-VISP156369.html
-            # https://www.ylighting.com/morton-table-lamp-by-visual-comfort-VISP155863.html
+    def start_requests(self):
+    	for url in self.start_urls:
+    		yield Request(url, self.parse)
             
     def parse(self, response):
-        json_data = json.loads(response.text)
-        for item in json_data:
-            url = item["items"][0]["itemurl"]
-            #yield {"title":item["items"][0]["storedisplayname"]}
-            
-            #url = "http://www.electricfireplacesdirect.com/electric-fireplace-brands/dimplex-built-in-electric-fireboxes/dimplex-33-inch-electric-fireplace-trim-kit-BF4TRIM33"
+        products = response.xpath('//a[@class="ProductCard"]/@href').extract()
+        for p in products:
+        	#p = "https://www.perigold.com/furniture/pdp/badgley-mischka-home-crawford-upholstered-panel-bed-bmch1096.html"
 
-            yield Request(url, self.parse_product, meta={'price':item['items'][0]['custitemlistprice'],'color':item['custitem212']})
-            
+        	headers = {
+        		'user-agent':'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.81 Safari/537.36',
+        		'upgrade-insecure-requests': '1'
+        	}
+        	yield Request(p, self.parse_product)
+        	break
 
     def parse_product(self, response):
 
@@ -196,13 +133,7 @@ class DimplexSpider(Spider):
                         'celeste','double','driftwood','front','ignite','lincoln','plug','prism','wall']
         item = OrderedDict()
         
-        title = response.xpath('//h1/text()').extract_first()
-        
-        
-        # productInfo = json.loads(re.findall('var productData = (\{.*\});',response.body)[0])
-        base_title = response.xpath('//h1/text()').extract_first()
-        #pid = response.xpath('//*[@class="productdetailcolumn productinfo"]/@data-pid').extract_first()
-        # modelno = re.findall('id=(.*)&name', response.url)[0]
+        base_title = response.xpath('//meta[@property="og:title"]/@content').extract_first()
 
         custom_description = ''
         
@@ -218,15 +149,7 @@ class DimplexSpider(Spider):
             designer = designer.split(":")[-1].split("/")[0]
 
         modelno = ''
-        modelnos_temp = []
-        # if modelno:
-        atrr = response.xpath('//*[@class="pdp-tab-text"]')
-        for tag in atrr:
-            if tag.xpath('./span/text()').extract_first() and 'Model' in tag.xpath('./span/text()').extract_first():
-                modelnos_temp = tag.xpath('./span/text()').extract()
-                break
 
-        base_title = base_title.replace("Dimplex ","")
         if designer != '' :
             title = self.brand_name +' ' + base_title + ' by ' + designer + ' - ' + modelno + ' - Welivv.com'
         else:
@@ -235,21 +158,10 @@ class DimplexSpider(Spider):
         item['src'] = response.url
         item['custom_title'] = title
 
-        if (" - " in base_title):
-            print "############"
-            modelno = base_title.split(' - ')[1]
-            base_title = base_title.split(' - ')[0]
-            print modelno
-            print base_title
-
         modelnos = [modelno]
 
-        base_title = base_title.replace("Dimplex ", "")
-
         title = base_title.replace('&reg;','').replace('&trade;','').replace('&eacute;','e').replace('&amp;','').replace('&quot;','')
-        # if "Paimio" in title or "Rival" in title or 'Children\'s Chair' in title or "Table 8" in title or "Table 9" in title or "Table Y8" in title:
-        #     title = self.insert_lastone(title)
-
+        
         title = title.replace(', Set of 2','').replace('Big Bang','Bigbang').replace('Diesel Collection','DieselCollection').replace('Le Soleil','LeSoleil').\
                 replace('New Buds','Newbuds')
 
@@ -265,7 +177,8 @@ class DimplexSpider(Spider):
                     replace('remote control','remotecontrol').replace('caster set','casterset').replace('side table','sidetable').replace('chair set','chairset').\
                     replace('bath bar','bathbar').replace('flush mount','flushmount').replace('suspension system','suspensionsystem').\
                     replace('lighting system','lightingsystem').replace('hanger kit','hangerkit').replace('bath light','bathlight').replace('dining chair','diningchair').\
-                    replace('vanity light','vanitylight').replace('mirror kit','mirrorkit').replace('suspension lamp','suspensionlamp').replace('coffee table','coffeetable')
+                    replace('vanity light','vanitylight').replace('mirror kit','mirrorkit').replace('suspension lamp','suspensionlamp').replace('coffee table','coffeetable').\
+                    replace('dining table','diningtable')
 
         # temp code start
         # yield item
@@ -273,44 +186,53 @@ class DimplexSpider(Spider):
         # temp code end
 
         words = temp_id.lower().split(' ')
+
         id = self.brand_name.lower().replace(' ', '') +'-' + ''.join(words[1:-1]) + '-' + words[-1]
 
-        # if words[1].title() in collections:
+        collection_temp = ' '.join(response.xpath('//div[contains(text(),"This Collection")]/following-sibling::*[1]/text()').extract())
+        collection = collection_temp.split(' by ')[0]
 
-        collection = ''
-
-        if words[1].lower() in collections:
-            id = id.replace(words[1].lower(),'')
-            id = id + "-" + words[1].lower()
-            collection = words[1].lower()
-
+        if collection:
+            collection = collection.lower()
+            id = id.replace(collection+"-",'')
+            id = id + "-" + collection
 
         id = id.replace('(', '').replace(')', '').replace(',', '').replace(':', '').replace('\"', '')
         # ID Exception process
-        item['sku'] = id
-        
-        # self.count += 1
-        # print "######################  ", self.count
-        print response.url
+        item['sku'] = id        
 
         item['modelno'] = modelno#response.xpath('//*[@class="ellipsis"]/text()').extract_first().strip()
         item['available_new'] = "1-2 Weeks"
         item['sale_price'] = ''
         item['call_price'] = ''
-        item['price'] = response.meta['price']
+        original_price = response.xpath('//*[contains(@class, "ProductPricing-strikethrough")]/text()').re('[\d.,]+')
+        price = ''
+        if original_price:
+        	price = original_price[0]
+        else:
+        	price = response.xpath('//*[@data-codeception-id="product-price"]/text()').re('[\d.,]+')[0].replace(',','')
+
+        item['price'] = price
         item['pbrand:custom'] = self.brand_name
 
         swatches = {}
         ### Color options ###
-        item['pcolor_new'] = response.meta['color']
+        cccolor = response.xpath('//*[contains(@aria-label,"Select Color")]/option[2]/text()').extract()
+        print "##############"
+        print cccolor
+        if not cccolor:
+        	cccolor = response.xpath('//td[contains(text(), "Color") and not(contains(text(), "Color Temperature"))]/following-sibling::td[1]/text()').extract()	
+
+
+        item['pcolor_new'] = cccolor[0] if cccolor else ""
 
         attributesKey = {}
         options_keys = []
-        
-
-        
-        item['voltage'] = ' '.join(response.xpath('//*[@id="specs"]/div[1]/div//strong[contains(text(),"Volts")]/ancestor::div[1]/following-sibling::div[1]/p/text()').extract())
-        item['bulb'] = ' '.join(response.xpath('//*[@id="specs"]/div[1]/div//strong[contains(text(),"Bulb")]/ancestor::div[1]/following-sibling::div[1]/p/text()').extract())
+             
+        vvvvoltage = response.xpath('//td[contains(text(), "Voltage")]/following-sibling::td[1]/text()').re('[\d.]+')
+        item['voltage'] = vvvvoltage[0] if vvvvoltage else ''
+        bbbultype = response.xpath('//td[contains(text(), "Bulb Type")]/following-sibling::td[1]/text()').extract()
+        item['bulb'] = bbbultype[0] if bbbultype else ''
 
         ### Dimensions ###
         item['width'] = ""
@@ -320,32 +242,28 @@ class DimplexSpider(Spider):
 
         display_dimensions = "<div>";
 
-        dimensions_temps = response.xpath('//*[@id="specs"]/div[1]/div//strong[contains(text(),"Dimensions")]/ancestor::div[1]/following-sibling::div[1]/p/text()').extract()
+        dimensions_temps = response.xpath('//*[@class="ProductWeightsDimensions"]//dt[not(contains(text(), "Weight"))]')
         
-        if len(dimensions_temps) < 1:
-            dimensions_temps = response.xpath('//td[contains(text(), "Dimensions")]/following-sibling::td[1]/text()').extract()
-
-        if len(dimensions_temps) < 1:
-            dimensions_temps = response.xpath('//li[contains(text(), "W x")]/text()').extract()
-
-        for dm in dimensions_temps:
+        for iii, dm in enumerate(dimensions_temps):
             display_dimensions += "<li>"
-            display_dimensions += dm.strip('\n').strip()
-            display_dimensions += "</li>"            
-        
-        width = re.findall('([\d.,\"]+)\s*W', ' '.join(dimensions_temps))
-        if width:
-            item['width'] = width[0].replace('"','').strip('\n')
-        height = re.findall('([\d.,\"]+)\s*H', ' '.join(dimensions_temps))
-        if height:
-            item['height'] = height[0].replace('"','').strip('\n')
-        depth = re.findall('([\d.,\"]+)\s*D', ' '.join(dimensions_temps))
-        if depth:
-            item['depth'] = depth[0].replace('"','').strip('\n')
+            dd = ' '.join(dm.xpath('./following-sibling::dd[1]//text()').extract())
+            if iii != 0:
+            	display_dimensions += dm.xpath('./text()').extract_first()+": "
 
+            display_dimensions += dd
+            display_dimensions += "</li>"            
         
         display_dimensions += "</div>"
 
+        width = re.findall('([\d.,\"]+)\'\'\s*W', display_dimensions)
+        if width:
+            item['width'] = width[0].replace('"','').strip('\n')
+        height = re.findall('([\d.,\"]+)\'\'\s*H', display_dimensions)
+        if height:
+            item['height'] = height[0].replace('"','').strip('\n')
+        depth = re.findall('([\d.,\"]+)\'\'\s*D', display_dimensions)
+        if depth:
+            item['depth'] = depth[0].replace('"','').strip('\n')
 
         item['display_dimensions'] = display_dimensions
 
@@ -370,7 +288,7 @@ class DimplexSpider(Spider):
         if manufacture == '':
             manufacture = ''.join(response.xpath('//*[text()="Features:"]/following-sibling::ul//li[contains(text(),"Made in")]/text()').extract()).split("Made in")[-1]
 
-        item['mss_made_in'] = "USA"
+        item['mss_made_in'] = response.xpath('//td[contains(text(), "Country")]/following-sibling::td[1]/text()').extract_first()
         item['brandlink'] = self.brand_name
         item['designer_link'] = ""
         item['modelnos'] = modelnos
@@ -387,7 +305,7 @@ class DimplexSpider(Spider):
         item['product_type_filters'] = ''
         item['collection_placement:custom'] = ''
         if collection:
-            item['collection_placement:custom'] = self.brand_name.lower().replace(' ', '') + "-"+id.split('-')[-1]
+            item['collection_placement:custom'] = self.brand_name.lower().replace(' ', '') + "-"+collection
         item['expiration_date'] = ''
 
         item['pdfs'] = []
@@ -420,15 +338,13 @@ class DimplexSpider(Spider):
         schematic_images = []
 
 
-        images = response.xpath('//div[@class="slide"]/amp-img/@src').extract()
-
-        if len(images) < 1:
-            images = response.xpath('//*[@id="product_hero_shot"]/a/@href').extract()
+        images = response.xpath('//li[contains(@class,"ProductDetailImage")]//img/@src').extract()
 
         img_files = [];
         for idx, image in enumerate(images):
             
-            image_path = "dimplex_all/{}/Images/".format(self.brand_name)
+            image_path = "resource/{}/Images/".format(self.brand_name)
+            image = image.replace("resize-h60-w60","resize-h800")
 
             if not os.path.exists(image_path):
                 os.makedirs(image_path)
@@ -461,7 +377,7 @@ class DimplexSpider(Spider):
         
         item['color_images'] = ""
 
-        custom_description = ''.join(response.xpath('//*[text()="Includes"]/preceding-sibling::p[1]/text()').extract())
+        custom_description = ''.join(response.xpath('//*[@class="ProductOverviewInformation-description"]/text()').extract())
         # item['pcolor'] = ''
         item['name'] = base_title
         caption = '<b>{} '.format(self.brand_name) + title + '</b><br>'
@@ -488,10 +404,15 @@ class DimplexSpider(Spider):
         # title = title.replace('  ', '+').replace(' ', '+').lower().replace('outdoor', '')
             # https://www.google.com/search?biw=907&bih=944&tbm=shop&ei=j8LgWoPhEoKsjwPL4bTABg&q=Anemone+Large+Wall+Ceiling+Light&oq=Anemone+Large+Wall+Ceiling+Light
 
-        yield item
-        #yield Request('https://www.google.com/search?tbm=shop&ei=du9-W-ieHPHq9AOehJToCA&q={}&oq={}'.format(title, title), callback= self.parse_upc, meta={'item': item}, errback=self.errGoogle)
-
-        # yield item
+        raw_js = response.xpath('//script[contains(text(), "csrfToken")]/text()').extract_first()
+        j_raw_data = re.findall('wf.extend\((.*\}\})\);', raw_js)
+        if j_raw_data:
+        	print j_raw_data[0]
+        
+    def parse_options(self, response):
+    	print response.body
+        #yield item
+        
     def errGoogle(self, response):
         yield response.request.meta['item']
     def parse_upc(self, response):
@@ -732,8 +653,3 @@ class DimplexSpider(Spider):
                 return old
         except:
             return old
-
-
-
-
-
