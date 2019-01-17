@@ -7,20 +7,77 @@ from scrapy.utils.response import open_in_browser
 from collections import OrderedDict
 import time
 from shutil import copyfile
-import json, re
+import json, re, os
+from fake_useragent import UserAgent
 
+ip_list = [
+    '107.172.228.190:80',
+    '154.16.55.211:80',
+    '192.210.194.206:80',
+    '104.140.83.23:80',    
+    '107.158.141.122:80',
+    '154.16.55.198:80',
+    '154.16.55.215:80',
+    '107.158.141.89:80',
+    '155.94.134.253:80',
+    '155.94.134.14:80',
+    '104.140.83.111:80',
+    '155.94.134.168:80',
+    '104.140.83.22:80',
+    '107.172.227.235:80',
+    '206.41.185.126:80',
+    '206.41.185.123:80',
+    '172.245.25.79:80',
+    '154.16.55.229:80',
+    '107.172.228.176:80',
+    '104.140.83.201:80',    
+]
+
+error_list = []
 
 def download(url, destfilename):
     if not os.path.exists(destfilename):
         print "Downloading from {} to {}...".format(url, destfilename)
         try:
-            r = requests.get(url, stream=True)
+            hdr = {
+                    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36',
+                    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',                                       
+                  }
             
-            with open(destfilename, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=1024):
-                    if chunk:
-                        f.write(chunk)
-                        f.flush()
+            if destfilename.split(".")[-1].lower() != 'jpg':
+                hdr = {}
+
+            #for ip in ip_list:
+            try:
+                proxyDict = {
+                    "http": "http://{}".format(ip),
+                    "https": "https://{}".format(ip)
+                }
+
+                with requests.Session() as s:
+                    r = s.get(url, stream=True, headers=hdr, proxies=proxyDict)
+                    size = 0
+                    
+                    with open(destfilename, 'wb') as f:
+                        for chunk in r.iter_content(chunk_size=2048):
+                            if chunk:
+                                size += len(chunk)
+                                f.write(chunk)
+                                f.flush()
+                        print ">>> ", size, " bytes downloaded."
+                    if size != 3271:
+                        print "OK!!!"
+                    else:
+                        print "<<< Image Error."
+                        error_list.append(url)
+                    # if os.path.isfile(destfilename):
+                    #     os.remove(destfilename)
+            except:
+                # if os.path.isfile(destfilename):
+                #     os.remove(destfilename)
+                #continue
+                pass
+
             return True
         except:
             print "Error downloading file."
@@ -32,97 +89,73 @@ def download(url, destfilename):
 
 class PerigoldSpider(Spider):
     name = "perigold"
-    start_urls = ['https://www.perigold.com/brand/bnd/badgley-mischka-home-b44446.html']
+    start_urls = ['https://www.perigold.com/brand/bnd/aerin-home-b47918.html']
 
-    brand_name = "Badgley Mischka Home"
+    brand_name = "AERIN"
 
-    def filter_list(self, lst):
-        min_len = min([len(x) for x in lst])
-        sp = -1
-        for x in xrange(0,min_len-1):
-            fst = set([i[0] for i in lst])
-            if len(fst) <= 1:
-                lst = [i[1:] for i in lst]
-            else:
-                break
-        return lst
-
-    def extract_models(self, data):
-        if 'vpn' in data:
-            yield data['vpn'].split('|')[0]
-        for k in data:
-            if isinstance(data[k], dict):
-                for i in self.extract_models(data[k]):
-                    yield i
-
-
-    def extract_colors(self, data, name):
-        if name in data:
-            for k in data[name]:
-                yield data[name][k]['name']
-        else:
-            for i in data:
-                if isinstance(data[i], dict):
-                    for j in data[i]:
-                        for n in self.extract_colors(data[i][j], name):
-                            yield n
-
-
-    def extract_images(self, data):
-        if 'image' in data:
-            yield {data['name']:data['image']}
-
-        for k in data:
-            if isinstance(data[k], dict):
-                for i in self.extract_images(data[k]):
-                    yield i
-
-    def extract_swatches(self, data, name):
-        if name in data:
-            for k in data[name]:
-                yield {data[name][k]['name']:data[name][k]['image']}
-        else:
-            for i in data:
-                if isinstance(data[i], dict):
-                    for j in data[i]:
-                        for n in self.extract_swatches(data[i][j], name):
-                            yield n
-
-    def insert_lastone(self, title):
-        m = title.split()
-        m[-1], m[-2] = m[-2], m[-1]
-        return ' '.join(m)
-
-    def insert_one(self, title):
-        
-        splitter = " - "
-
-        s,l = title.split(splitter)
-
-        s = s.replace('Wall Sconce','Wallsconce').replace('Suspension System','SuspensionSystem').replace('Light Suspension','LightSuspension').\
-                replace('Suspension Light','SuspensionLight').replace('/','').replace('Wall Light','Walllight').replace('Light Pendant','LightPendant').\
-                replace('Ceiling Fan','CeilingFan').replace('Wall Fan','WallFan')
-
-        l = l.replace(' / ',' ').replace('-','')
-        result = list(s.split())
-        result.insert(-1, l.strip())
-        return ' '.join(result)
 
     def start_requests(self):
     	for url in self.start_urls:
     		yield Request(url, self.parse)
             
-    def parse(self, response):
-        products = response.xpath('//a[@class="ProductCard"]/@href').extract()
-        for p in products:
-        	#p = "https://www.perigold.com/furniture/pdp/badgley-mischka-home-crawford-upholstered-panel-bed-bmch1096.html"
+    def parse2(self, response):
+        brands = response.xpath('//*[@class="xltext centertext"]/a/@href').extract()
+        for b in brands:
+            url = response.urljoin(b)
+            yield Request(url, self.parse_brands)
+            
 
-        	headers = {
-        		'user-agent':'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.81 Safari/537.36',
-        		'upgrade-insecure-requests': '1'
-        	}
-        	yield Request(p, self.parse_product)
-        	break
+    def parse_brands(self, response):
+        brands = response.xpath('//*[@id="brands_list"]/a')
+        for b in brands:
+            name = b.xpath('./text()').extract_first()
+            link = b.xpath('./@href').extract_first()
+            item = {
+                'brand': name.encode('utf8'),
+                'link': link
+            }
+            yield item
+
+    def parse(self, response):
+        ua = UserAgent()
+        
+        brand_index = re.findall('\-b([\d]+)', response.url)[0]
+        print brand_index
+        get_data_url = "https://www.perigold.com/a/manufacturer_browse/get_data?category_id=0&caid=0&maid={}&curpage=1".format(brand_index)
+
+        print get_data_url
+
+        headers = {
+            'accept': 'application/json',            
+            'x-requested-with': 'XMLHttpRequest'
+        }
+
+        yield Request(get_data_url, self.parse_products, headers=headers)
+
+    def parse_products(self, response):
+        print response.url
+        jdata = json.loads(response.body)
+        products = jdata['browse']['browse_grid_objects']
+        product_count = jdata['browse']['product_count']
+        current_page = jdata['browse']['current_page']
+        print len(products)
+        print product_count
+        print current_page
+
+        for p in products:
+            link = p['url']
+            #link = "https://www.perigold.com/home/pdp/aerin-300-piece-shagreen-poker-set-aerh1231.html"
+            #link = "https://www.perigold.com/tabletop-kitchen/pdp/aerin-coral-bottle-stopper-aerh1035.html"
+            yield Request(link, self.parse_product)
+            
+
+        if product_count > current_page * 48:
+            url = response.url.split("curpage=")[0] + "curpage=" + str(current_page+1)
+            headers = {
+                'accept': 'application/json',            
+                'x-requested-with': 'XMLHttpRequest'
+            }
+            yield Request(url, self.parse_products, headers=headers)
 
     def parse_product(self, response):
 
@@ -195,9 +228,10 @@ class PerigoldSpider(Spider):
         if collection:
             collection = collection.lower()
             id = id.replace(collection+"-",'')
+            collection = collection.replace(' ','')
             id = id + "-" + collection
 
-        id = id.replace('(', '').replace(')', '').replace(',', '').replace(':', '').replace('\"', '')
+        id = id.replace('(', '').replace(')', '').replace(',', '').replace(':', '').replace('\"', '').replace(u'é',u'e')
         # ID Exception process
         item['sku'] = id        
 
@@ -205,12 +239,12 @@ class PerigoldSpider(Spider):
         item['available_new'] = "1-2 Weeks"
         item['sale_price'] = ''
         item['call_price'] = ''
-        original_price = response.xpath('//*[contains(@class, "ProductPricing-strikethrough")]/text()').re('[\d.,]+')
+        original_price = response.xpath('//*[contains(@class, "BasePriceBlock--list")]/text()').re('[\d.,]+')
         price = ''
         if original_price:
         	price = original_price[0]
         else:
-        	price = response.xpath('//*[@data-codeception-id="product-price"]/text()').re('[\d.,]+')[0].replace(',','')
+        	price = response.xpath('//*[@class="BasePriceBlock"]/text()').re('[\d.,]+')[0].replace(',','')
 
         item['price'] = price
         item['pbrand:custom'] = self.brand_name
@@ -224,7 +258,7 @@ class PerigoldSpider(Spider):
         	cccolor = response.xpath('//td[contains(text(), "Color") and not(contains(text(), "Color Temperature"))]/following-sibling::td[1]/text()').extract()	
 
 
-        item['pcolor_new'] = cccolor[0] if cccolor else ""
+        item['pcolor_new'] = [cccolor[0]] if cccolor else []
 
         attributesKey = {}
         options_keys = []
@@ -268,17 +302,6 @@ class PerigoldSpider(Spider):
         item['display_dimensions'] = display_dimensions
 
         item['options'] = ""
-        lowest_price = float(item['price'])
-        options = response.xpath('//select/option[@value!=""]/text()').extract()
-        opt_name = response.xpath('//select/@name').extract_first()
-
-        if opt_name and options and "firebox" in opt_name:
-            item['options'] = '{\"' + opt_name.strip() + '\":['
-            for opt in options:
-                item['options'] += '\"' + opt + '\",'
-            item['options'] = item['options'].strip(',')
-            item['options'] += ']}'
-
         item['manauall_flag'] = ''       
 
         item['modelno'] = modelno
@@ -300,7 +323,7 @@ class PerigoldSpider(Spider):
         item['notes'] = ''
         item['warranty'] = '"1 Year"'
         item['prioritization'] = ''
-        item['categories'] = "Furniture/Electric Fireplaces"
+        item['categories'] = ' / '.join(response.xpath('//*[@class="Breadcrumbs-listItem"]/a/text()').extract())
         #item['product-categories'] = ''
         item['product_type_filters'] = ''
         item['collection_placement:custom'] = ''
@@ -314,7 +337,7 @@ class PerigoldSpider(Spider):
        
             #http://www.electricfireplacesdirect.com
         if pdfs:
-            pdf_path = "dimplex_all/{}/PDF/".format(self.brand_name)
+            pdf_path = "resource/{}/PDF/".format(self.brand_name)
             if not os.path.exists(pdf_path):
                 os.makedirs(pdf_path)
 
@@ -344,7 +367,15 @@ class PerigoldSpider(Spider):
         for idx, image in enumerate(images):
             
             image_path = "resource/{}/Images/".format(self.brand_name)
+            #image = image.replace("-fg","-ag")
             image = image.replace("resize-h60-w60","resize-h800")
+
+            print "Converting from \"",image,"\""
+            d,u = image.split("/im/")
+            k,i = u.split("/resize")
+
+            image = d + "/im/" + str(int(k)+10) + "/resize" + i
+            print "to \"", image ,"\""
 
             if not os.path.exists(image_path):
                 os.makedirs(image_path)
@@ -404,15 +435,69 @@ class PerigoldSpider(Spider):
         # title = title.replace('  ', '+').replace(' ', '+').lower().replace('outdoor', '')
             # https://www.google.com/search?biw=907&bih=944&tbm=shop&ei=j8LgWoPhEoKsjwPL4bTABg&q=Anemone+Large+Wall+Ceiling+Light&oq=Anemone+Large+Wall+Ceiling+Light
 
-        raw_js = response.xpath('//script[contains(text(), "csrfToken")]/text()').extract_first()
-        j_raw_data = re.findall('wf.extend\((.*\}\})\);', raw_js)
-        if j_raw_data:
-        	print j_raw_data[0]
+        raw_html = response.xpath('//script[contains(text(), "csrfToken")]/text()').extract_first()
+        raw_jdata = re.findall('wf.extend\((.*\}\})\);', raw_html)
+
+        swatch_images = {}
+        colors = []
+
+        if raw_jdata:
+        	jdata = json.loads(raw_jdata[0])
+        	d1 = jdata['wf']['reactData']
+        	if d1:
+        		for key in d1.keys():
+        			try:
+        				d2 = d1[key]['bootstrap_data']['options']['standardOptions']
+
+        				if len(d2) > 0:
+        					full_options = []
+        					for opt in d2:
+        						options_sub = ""
+        						opt_name = opt['category_name']
+        						options = opt['options']
+        						options_sub += '"' + opt_name + '":['
+        						oo = []
+        						for o in options:
+        							ostr = '"' + o['name']
+        							if int(o['cost']) > 0:
+        								ostr += '(+$' + str(o['cost']) + ')'
+        							ostr += '"'
+        							oo.append(ostr)
+        							if "Color" in opt_name or "Finish" in opt_name:
+        								colors.append(o['name'])
+
+        							#append swatch
+        							if "swatch_option_thumbnail" in o.keys():
+        								kkk = item['sku']+'-'+o['name'].lower().replace(' ','').replace('/','') + ":" + o['name']
+        								swatch_images[kkk] = o['swatch_option_thumbnail']
+
+        						options_sub += ','.join(oo)
+        						options_sub += ']'
+        						full_options.append(options_sub)
+
+        					item['options'] = '{' + ','.join(full_options) +'}'
+        					break
+        			except:        				
+        				continue
+
+        if len(swatch_images.keys()) > 0:
+            item['color_images'] = swatch_images.keys()
+            for swch in swatch_images.keys():
+                image_path = "resource/{}/Swatches/".format(self.brand_name)
+                if not os.path.exists(image_path):
+                    os.makedirs(image_path)
+                extension = 'jpg'
+                filename = swch.split(":")[0]
+                filename = filename + "." + extension
+                download(swatch_images[swch], image_path+filename)
+
+        if colors:
+        	item['pcolor_new'] = list(set(item['pcolor_new'] + colors))
+        	
+        print "ERRORLIST ", error_list
+        yield item
         
-    def parse_options(self, response):
-    	print response.body
-        #yield item
-        
+
     def errGoogle(self, response):
         yield response.request.meta['item']
     def parse_upc(self, response):
